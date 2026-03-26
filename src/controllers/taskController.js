@@ -21,10 +21,13 @@ exports.createTask = async (req, res) => {
 
 exports.getTasks = async (req, res) => {
     try {
-      const { status, search } = req.query;
+      const { status, search, mine } = req.query;
   
       let filter = {};
   
+      if (["true", "1", "yes"].includes(String(mine).toLowerCase())) {
+        filter.assignedTo = req.user.id;
+      }
       // filter by status
       if (status) {
         filter.status = status;
