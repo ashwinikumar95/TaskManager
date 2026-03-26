@@ -1,35 +1,37 @@
 # Task Manager API
 
-A small **Express + MongoDB** backend for a task manager app. Right now it’s focused on **user auth** (sign up and log in). Task CRUD and file uploads are planned for the folder layout you already have (`routes/`, `services/`, `uploads/`, etc.).
+An **Express + MongoDB (Mongoose)** REST API for managing **users**, **tasks**, and **comments** on those tasks. Auth uses **JWT**; tasks and comments are behind middleware so only requests with a valid token can hit those routes.
+
+**Still optional / not wired:** the `uploads/` folder is there for future file attachments.
 
 ---
 
 ## What works today
 
-- **Register** — create a user with hashed password (bcrypt).
-- **Login** — returns a **JWT** if email and password match.
-- **MongoDB** — the server connects on startup; it won’t listen until the database connection succeeds.
-
-There is an **`authMiddleware`** that verifies a JWT, but it is **not wired to any route yet**. You’ll use it when you add protected endpoints (e.g. “my tasks”).
+- **Auth** — register, login; passwords hashed with **bcrypt**; login returns a **JWT**.
+- **Tasks** — create, list (with optional filters), update, delete — all require a JWT.
+- **Comments** — add a comment on a task, list comments for a task — both require a JWT.
+- **Profile** — get and update your own user (`name` / `email` only on update; password is not changed via profile).
+- **MongoDB** — connects on startup; the HTTP server starts only after a successful connection.
 
 ---
 
 ## Prerequisites
 
 - **Node.js** 18 or newer  
-- **MongoDB** running locally (e.g. `localhost:27017`) or a cloud URI (Atlas)
+- **MongoDB** (local, e.g. `127.0.0.1:27017`, or **Atlas**)
 
 ---
 
 ## Setup
 
-1. Clone the repo and install dependencies:
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Create a **`.env`** file in the project root (it’s gitignored). Example for a local database named `TaskManager`:
+2. Add a **`.env`** file at the project root (gitignored). Example for a local DB named `TaskManager`:
 
    ```env
    PORT=3000
@@ -38,51 +40,90 @@ There is an **`authMiddleware`** that verifies a JWT, but it is **not wired to a
    JWT_SECRET=your-long-random-secret-at-least-32-chars
    ```
 
-   Use your real Mongo URI if you use Atlas or a different host/port. **`JWT_SECRET`** is used to sign and verify JWTs (login + `authMiddleware`); use a long random string and never commit it. For production, generate one (e.g. `openssl rand -base64 32`).
+   Use your real URI for Atlas or other hosts. **`JWT_SECRET`** signs and verifies JWTs — use a long random value; for production, e.g. `openssl rand -base64 32`.
 
-3. Start the API:
+3. Run the server:
 
    ```bash
    npm run dev
    ```
 
-   Or without auto-restart on file changes:
+   Or:
 
    ```bash
    npm start
    ```
 
-   You should see the server URL in the terminal once MongoDB is connected.
+---
+
+## Authentication
+
+1. **`POST /auth/register`** then **`POST /auth/login`** with `Content-Type: application/json`.
+2. Copy the **`token`** from the login response.
+3. For protected routes, send header **`Authorization`** with **only the JWT string** (no `Bearer ` prefix), unless you change the middleware to strip `Bearer `.
+
+If Postman/Insomnia uses **Bearer Token** auth, they usually send `Bearer <jwt>`; that can make verification fail with the current middleware. Use a raw **Authorization** header value equal to the token, or adjust the middleware.
 
 ---
 
-## API (current)
+## API reference
 
-Base URL: `http://localhost:<PORT>` (default port **3000**).
+Base URL: `http://localhost:<PORT>` (default **3000**).  
+Unless noted, JSON bodies need **`Content-Type: application/json`**.
 
-| Method | Path | Body (JSON) | Notes |
-|--------|------|-------------|--------|
-| `GET` | `/` | — | Simple health-style response (`{ ok: true }`). |
-| `POST` | `/auth/register` | `{ "name", "email", "password" }` | Creates user; **201** with user data on success. |
-| `POST` | `/auth/login` | `{ "email", "password" }` | Returns `{ message, token }` on success. |
+### Public
 
-Send JSON with header: **`Content-Type: application/json`**.
+| Method | Path | Body | Notes |
+|--------|------|------|--------|
+| `POST` | `/auth/register` | `{ "name", "email", "password" }` | **201** with user on success. |
+| `POST` | `/auth/login` | `{ "email", "password" }` | `{ message, token }` on success. |
+
+### Users / profile (JWT required)
+
+| Method | Path | Body | Notes |
+|--------|------|------|--------|
+| `GET` | `/users/profile` | — | Current user; password omitted. |
+| `PATCH` | `/users/profile` | `{ "name"?, "email"? }` | At least one field required. Validates schema; duplicate email → **400**. |
+
+### Tasks (JWT required)
+
+| Method | Path | Body / query | Notes |
+|--------|------|----------------|--------|
+| `POST` | `/tasks/` | `{ "title"` (required), `"description"`, `"dueDate"`, `"assignedTo"` (User ObjectId) `}` | `createdBy` is set from the JWT user. |
+| `GET` | `/tasks/` | Query: `status` (`open` \| `in-progress` \| `completed`), `search` (matches title/description, case-insensitive) | Lists tasks; `assignedTo` populated with `name`, `email`. |
+| `PUT` | `/tasks/:id` | Any updatable task fields | e.g. `status`, `title`, `description`, `dueDate`. |
+| `DELETE` | `/tasks/:id` | — | Deletes the task. |
+
+### Comments (JWT required)
+
+| Method | Path | Body | Notes |
+|--------|------|------|--------|
+| `POST` | `/comments/:taskId` | `{ "text" }` | **201**; `userId` from JWT, `taskId` from URL. |
+| `GET` | `/comments/:taskId` | — | Comments for that task; `userId` populated with `name`. |
+
+---
+
+## Data model (short)
+
+- **User** — `name`, `email`, `password` (hashed).  
+- **Task** — `title`, `description`, `status` (`open` \| `in-progress` \| `completed`), `dueDate`, `assignedTo`, `createdBy`, timestamps.  
+- **Comment** — `text`, `userId`, `taskId`, timestamps.
 
 ---
 
 ## Project layout
 
 ```
-├── config/          # Shared config (loads .env: port, Mongo URI, JWT secret, uploads path)
+├── config/              # Loads .env; exports port, Mongo URI, JWT secret, uploads path
 ├── src/
-│   ├── app.js       # Express app, Mongo connect, server listen
-│   ├── controllers/
-│   ├── middleware/  # JWT middleware (ready for future protected routes)
-│   ├── models/      # User schema
-│   ├── routes/      # Auth routes
+│   ├── app.js           # Express app, routes, Mongo connect, listen
+│   ├── controllers/     # auth, task, comment handlers
+│   ├── middleware/      # JWT auth for /tasks and /comments
+│   ├── models/          # User, Task, Comment
+│   ├── routes/          # authRoutes, taskRoutes, commentRoutes
 │   ├── services/
 │   └── utils/
-├── uploads/         # For future attachments
-├── .env             # Your secrets (not committed)
+├── uploads/             # Reserved for future attachments
+├── .env
 └── package.json
 ```
