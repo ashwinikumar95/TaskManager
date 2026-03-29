@@ -6,6 +6,8 @@ const authRoutes = require("./routes/authRoutes");
 const taskRoutes = require("./routes/taskRoutes");
 const commentRoutes = require("./routes/commentRoutes");
 const userRoutes = require("./routes/userRoutes");
+const projectRoutes = require("./routes/projectRoutes");
+
 
 const app = express();
 
@@ -14,6 +16,7 @@ app.use("/auth", authRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/comments", commentRoutes);
 app.use("/users", userRoutes);
+app.use("/projects", projectRoutes);
 
 mongoose
   .connect(config.mongodbUri)

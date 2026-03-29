@@ -1,4 +1,9 @@
 const User = require("../models/User");
+const {
+  normalizeEmail,
+  normalizeName,
+  validateEmailFormat,
+} = require("../utils/userInput");
 
 exports.profile = async (req, res) => {
   try {
@@ -15,8 +20,21 @@ exports.profile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const updates = {};
-    if (req.body.name !== undefined) updates.name = req.body.name;
-    if (req.body.email !== undefined) updates.email = req.body.email;
+    if (req.body.name !== undefined) {
+      const name = normalizeName(req.body.name);
+      if (!name) {
+        return res.status(400).json({ message: "Name cannot be empty" });
+      }
+      updates.name = name;
+    }
+    if (req.body.email !== undefined) {
+      const email = normalizeEmail(req.body.email);
+      const emailCheck = validateEmailFormat(email);
+      if (!emailCheck.ok) {
+        return res.status(400).json({ message: emailCheck.message });
+      }
+      updates.email = email;
+    }
 
     if (Object.keys(updates).length === 0) {
       return res
