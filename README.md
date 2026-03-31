@@ -124,3 +124,4 @@ package.json
 ```
 
 Passwords are hashed with bcrypt; JWTs last about a day. Use HTTPS and a strong `JWT_SECRET` in production. Upload URLs are public to anyone who has the link.
+
