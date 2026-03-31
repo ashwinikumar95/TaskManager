@@ -79,9 +79,37 @@ async function requireTaskProjectMember(req, res, next) {
   }
 }
 
+/**
+ * Loads task by req.params.id (PUT/DELETE /tasks/:id). Sets req.task lean { projectId }.
+ */
+async function requireTaskProjectMemberById(req, res, next) {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+
+    const task = await Task.findById(id).select("projectId").lean();
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    const result = await memberCheck(String(task.projectId), req.user.id);
+    if (!result.ok) {
+      return res.status(result.status).json({ message: result.message });
+    }
+
+    req.task = task;
+    next();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
 module.exports = {
   userIsProjectMember,
   memberCheck,
   requireProjectMember,
   requireTaskProjectMember,
+  requireTaskProjectMemberById,
 };

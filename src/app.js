@@ -12,6 +12,7 @@ const projectRoutes = require("./routes/projectRoutes");
 const app = express();
 
 app.use(express.json());
+app.use("/uploads", express.static(config.uploadsDir));
 app.use("/auth", authRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/comments", commentRoutes);

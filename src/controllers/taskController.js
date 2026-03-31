@@ -20,24 +20,41 @@ function handleMongooseError(res, err, serverStatus = 500) {
   return res.status(serverStatus).json({ message });
 }
 
+function assigneeMustBeProjectMember(project, assignedTo) {
+  if (assignedTo == null || assignedTo === '') {
+    return { ok: true };
+  }
+  if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+    return { ok: false, message: 'Invalid assignedTo' };
+  }
+  if (!projectAccess.userIsProjectMember(project, assignedTo)) {
+    return { ok: false, message: 'Assignee must be a project member' };
+  }
+  return { ok: true };
+}
+
 exports.createTask = async (req, res) => {
   try {
     const { title, description, dueDate, assignedTo, projectId: rawProjectId } =
       req.body;
-    const projectId =
+    let projectId =
       rawProjectId == null ? '' : String(rawProjectId).trim();
     if (!projectId) {
-      return res.status(400).json({ message: 'projectId is required' });
+      const fallback = await Project.findOne({
+        $or: [{ createdBy: req.user.id }, { members: req.user.id }],
+      })
+        .sort({ _id: 1 })
+        .select('_id');
+      if (!fallback) {
+        return res.status(400).json({
+          message:
+            'No project available; create a project first or pass projectId',
+        });
+      }
+      projectId = String(fallback._id);
     }
     if (!mongoose.Types.ObjectId.isValid(projectId)) {
       return res.status(400).json({ message: 'Invalid projectId' });
-    }
-    if (
-      assignedTo != null &&
-      assignedTo !== '' &&
-      !mongoose.Types.ObjectId.isValid(assignedTo)
-    ) {
-      return res.status(400).json({ message: 'Invalid assignedTo' });
     }
 
     const access = await projectAccess.memberCheck(projectId, req.user.id);
@@ -45,11 +62,22 @@ exports.createTask = async (req, res) => {
       return res.status(access.status).json({ message: access.message });
     }
 
+    const assigneeCheck = assigneeMustBeProjectMember(
+      access.project,
+      assignedTo
+    );
+    if (!assigneeCheck.ok) {
+      return res.status(400).json({ message: assigneeCheck.message });
+    }
+
+    const assigneeId =
+      assignedTo != null && assignedTo !== '' ? assignedTo : undefined;
+
     const task = await Task.create({
       title,
       description,
       dueDate,
-      assignedTo,
+      assignedTo: assigneeId,
       createdBy: req.user.id,
       projectId,
     });
@@ -141,7 +169,12 @@ exports.updateTask = async (req, res) => {
       if (a != null && a !== '' && !mongoose.Types.ObjectId.isValid(a)) {
         return res.status(400).json({ message: 'Invalid assignedTo' });
       }
-      updates.assignedTo = req.body.assignedTo;
+      const assigneeCheck = assigneeMustBeProjectMember(access.project, a);
+      if (!assigneeCheck.ok) {
+        return res.status(400).json({ message: assigneeCheck.message });
+      }
+      updates.assignedTo =
+        a === '' || a == null ? null : req.body.assignedTo;
     }
 
     if (Object.keys(updates).length === 0) {
