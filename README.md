@@ -2,6 +2,8 @@
 
 A small REST API for task tracking: Express, MongoDB, JWT auth. Work happens inside **projects** (teams). Tasks belong to a project; comments can include **file uploads**. Logging out can invalidate the token on the server.
 
+You can drive the whole API from **Postman** using the collection file in this repo (see below)—import it once, then run requests in order without hand-writing URLs or headers.
+
 You will need **Node 18+** and **MongoDB** (local or Atlas).
 
 ## Run it locally
@@ -26,15 +28,25 @@ npm run dev
 
 Server: `http://localhost:3000` (or your `PORT`).
 
-## Postman
+## Postman collection
 
-Import **`Task Manager API.postman_collection.json`** from the project root (File → Import, or drag the file).
+This repo includes a ready-to-import Postman collection so you can call every endpoint without building requests from scratch.
 
-The Login request has a small **Tests** script that saves the JWT into a Postman **environment** variable `Authorization`. Create/select an environment in Postman so those scripts can run; other requests use `{{Authorization}}` on the header. You can also paste the token into collection variables **`token`** / **`Authorization`** by hand if you prefer.
+**Import it**
 
-**Collection variables:** `baseUrl` (default `http://localhost:3000`), `token`, `projectId`, `taskId`. Create project / create task requests may auto-fill `projectId` and `taskId` into the environment if your scripts are set up that way—otherwise copy `_id` values from responses.
+1. Open [Postman](https://www.postman.com/downloads/).
+2. Click **Import** (top left), then choose **`Task Manager API.postman_collection.json`** from the project root, or drag that file into the window.
+3. You will see a collection named **Task Manager API** with folders: Auth, Users, Projects, Tasks, Comments, Static files.
 
-Multipart comments: **form-data**, fields **`text`** (optional) and **`files`**.
+**Use it**
+
+1. Start the API locally (`npm run dev`) so `baseUrl` matches (default `http://localhost:3000`; change the **`baseUrl`** collection variable if your port differs).
+2. Run **Auth → Register** (optional) then **Auth → Login**. The Login request includes a **Tests** script that stores the JWT in a Postman **environment** variable **`Authorization`**. Create or select an **environment** in Postman (eye icon, top right) so scripts can save variables—then pick that environment before sending requests.
+3. After login, run other requests (projects, tasks, comments, etc.). They use `{{Authorization}}` on the `Authorization` header. If something fails with 401, run Login again.
+4. **Order matters for `projectId`:** run **Projects → Create project** before tasks that need `{{projectId}}` in the URL or body. Copy the project’s `_id` from the response into the **`projectId`** collection (or environment) variable if the Tests script did not set it—otherwise **Create task** and **Add member** will hit the wrong project or fail.
+5. **Collection variables** you can edit by hand: `baseUrl`, `token`, `projectId`, `taskId`. Some requests have tests that copy `projectId` / `taskId` from responses into the environment; if not, paste MongoDB `_id` values from JSON responses yourself.
+
+**Multipart comments:** use **Comments → Add comment (multipart + files)**, body type **form-data**, fields **`text`** (optional) and **`files`** (choose files in Postman).
 
 ## Auth
 
@@ -52,7 +64,15 @@ Use `Content-Type: application/json` unless you are uploading files.
 
 **Needs token:** `POST /auth/logout`, profile `GET`/`PATCH /users/profile`, projects (`POST/GET /projects`, `POST /projects/:id/members`, `PUT`/`DELETE /projects/:id`), tasks (`POST/GET /tasks`, `PUT`/`DELETE /tasks/:id`), comments (`POST`/`GET /comments/:taskId`).
 
-Tasks need a **project**. You can pass `projectId` on create or omit it—the API picks your first project. **assignedTo** must be someone in that project. **GET /tasks** supports `projectId`, `mine`, `status`, `search`.
+### Projects and `projectId`
+
+Everything task-related is scoped to a **project** (team). A task always has a `projectId` in the database.
+
+- **Create a project first** (`POST /projects`) unless you already belong to one. You must be the creator or a **member** of a project to create tasks or comments there.
+- **Creating a task** (`POST /tasks`): you can send **`projectId`** in the JSON to pick which project the task belongs to. If you **omit** `projectId`, the API assigns the task to the **first** project you belong to (oldest by id). If you **don’t belong to any project yet**, the request fails with an error—create or join a project first.
+- **Assigning tasks:** `assignedTo` must be a user who is already a **member of that project** (owner counts as a member). Random user ids are rejected.
+- **Listing tasks** (`GET /tasks`): without `?projectId=...` you see tasks from **all** projects you’re in. Add **`?projectId=<id>`** to narrow to one project. Query params `mine`, `status`, and `search` still apply on top of that.
+- **Comments** are on a **task**; access is checked via that task’s project, so you must be a member of the same project.
 
 Comments: JSON body `{ "text" }` or multipart with **`files`** (and optional `text`). Up to 10 files, 5MB each; images, PDF, or plain text. Files are available at `/uploads/<filename>` (public URL).
 
